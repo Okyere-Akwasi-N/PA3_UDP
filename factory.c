@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------
 // Assignment : PA-03 UDP Single-Threaded Server
-// Date       :
-// Author     : WRITE YOUR  NAME(S)  HERE  ... or risk losing points
+// Date       : 11/21/2025
+// Author     : Kyle Mirra      Akwasi Okyere
 // File Name  : factory.c
 //---------------------------------------------------------------------
 
@@ -46,6 +46,7 @@ void factLog( char *str )
 int   remainsToMake , // Must be protected by a Mutex
       actuallyMade ;  // Actually manufactured items
 
+
 int   numActiveFactories = 1 , orderSize ;
 
 int   sd ;      // Server socket descriptor
@@ -63,15 +64,30 @@ void goodbye(int sig)
            "goodbye\n\n" , getpid() );  
 
     // missing code goes here
+    fflush(stdout);
+    switch (sig) {
+        case SIGTERM:
+            printf("nicely asked to TERMINATE by SIGTERM (%d).\n", sig);
+            break;
+        case SIGINT:
+            printf("INTERRUPTED by SIGINT (%d)\n", sig);
+            break;
+        default:
+            printf("unexpectedly SIGNALed by (%d)\n", sig);
+    }
 
 }
 
 /*-------------------------------------------------------*/
 int main( int argc , char *argv[] )
 {
-    char  *myName = "Replace with your Names" ; 
+    sigactionWrapper(SIGTERM, goodbye);
+    sigactionWrapper(SIGINT, goodbye);
+
+    char  *myName = "Kyle Mirra and Akwasi Okyere" ; 
     unsigned short port = 50015 ;      /* service port number  */
     int    N = 1 ;                     /* Num threads serving the client */
+    unsigned int    addrLen;          /* from-address length          */
 
     printf("\nThis is the FACTORY server developed by %s\n\n" , myName ) ;
     char myUserName[30] ;
@@ -103,29 +119,64 @@ int main( int argc , char *argv[] )
 
 
     // missing code goes here
+    // Create the socket
+    sd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sd < 0) {
+        err_sys("Couldn't create a UDP socket");
+    }
 
+    // Prepare the server's socket address
+    memset( (void *) &srvrSkt, 0, sizeof(srvrSkt));
+    srvrSkt.sin_family = AF_INET;
+    srvrSkt.sin_port = htons(port);
+    srvrSkt.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    // Bind the server to the socket
+    int status = bind(sd , (SA *) &srvrSkt, sizeof(srvrSkt));
+    if (status < 0) {
+        err_sys("Couldn't bind the socket to the server");
+    }
+
+    // Print the socket status
+    char    ipStr[ IPSTRLEN ] ;    /* dotted-dec IP addr. */
+    inet_ntop( AF_INET, (void *) & srvrSkt.sin_addr.s_addr , ipStr , IPSTRLEN ) ;
+    printf( "Bound socket %d to IP %s Port %d\n" , sd , ipStr , ntohs( srvrSkt.sin_port ) );
+    
 
     int forever = 1;
     while ( forever )
     {
+        addrLen = sizeof(clntSkt);
         printf( "\nFACTORY server waiting for Order Requests\n" ) ; 
 
         // missing code goes here
-
+        // Wait to receive request message
+        msgBuf rcvMsg;
+        if (recvfrom(sd, (void *) &rcvMsg, sizeof(rcvMsg), 0, (SA *) &clntSkt, &addrLen) < 0) {
+            err_sys("Error receiving the order request from the client");
+        }
         printf("\n\nFACTORY server received: " ) ;
-        printMsg( & msg1 );  puts("");
+        printMsg( & rcvMsg );  puts("");
+
+        // Set order size and remainsToMake
+        orderSize = rcvMsg.orderSize;
+        remainsToMake += orderSize;
+        
+        // Create the confirmation message
+        msgBuf cnfMsg;
+        cnfMsg.numFac = 1;
+        cnfMsg.purpose = ORDR_CONFIRM;
 
 
-        // missing code goes here
-
-
+        // Send the confirmation message
+        if (sendto(sd, (void *)&cnfMsg, sizeof(cnfMsg), 0, (SA * ) &clntSkt, sizeof(clntSkt)) < 0) {
+            err_sys("Error sending the order confirmation message");
+        }
         printf("\n\nFACTORY sent this Order Confirmation to the client " );
-        printMsg(  & msg1 );  puts("");
+        printMsg(  & cnfMsg );  puts("");
         
         subFactory( 1 , 50 , 350 ) ;  // Single factory, ID=1 , capacity=50, duration=350 ms
     }
-
-
     return 0 ;
 }
 
@@ -135,32 +186,44 @@ void subFactory( int factoryID , int myCapacity , int myDuration )
     int     partsImade = 0 , myIterations = 0 ;
     msgBuf  msg;
 
-    while ( 1 )
+    while (remainsToMake > 0)
     {
+        
         // See if there are still any parts to manufacture
         if ( remainsToMake <= 0 )
             break ;   // Not anymore, exit the loop
         
 
-
         // missing code goes here
+        // Calculate how many parts to make and sleep for the duration
+        int partsToMake = minimum(remainsToMake, myCapacity);
+        remainsToMake -= partsToMake;
+        Usleep(myDuration * 1000);
 
+        partsImade += partsToMake;
+        myIterations++;
 
 
         // Send a Production Message to Supervisor
+        msg.facID = 1;
+        msg.capacity = myCapacity;
+        msg.partsMade = partsToMake;
+        msg.duration = myDuration;
+        msg.purpose = PRODUCTION_MSG;
 
-
-        // missing code goes here
-
-
+        if (sendto(sd, (void *) &msg, sizeof(msg), 0, (SA *) &clntSkt, sizeof(clntSkt)) < 0) {
+            err_sys("Error sending production message");
+        }
     }
 
     // Send a Completion Message to Supervisor
+    msgBuf cmpMsg;
+    cmpMsg.facID = 1;
+    cmpMsg.purpose = COMPLETION_MSG;
 
-
-    // missing code goes here
-
-
+    if (sendto(sd, (void *) &cmpMsg, sizeof(cmpMsg), 0, (SA *) &clntSkt, sizeof(clntSkt)) < 0) {
+        err_sys("Error sending completion message");
+    }
 
     snprintf( strBuff , MAXSTR , ">>> Factory # %-3d: Terminating after making total of %-5d parts in %-4d iterations\n" 
           , factoryID, partsImade, myIterations);
