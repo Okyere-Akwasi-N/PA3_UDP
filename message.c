@@ -1,9 +1,10 @@
 //---------------------------------------------------------------------
-// Assignment : PA-02 Concurrent Processes & IPC
+// Assignment : PA-03 UDP Single-Threaded Server
 // Date       :
 // Author     : Mohamed Aboutabl
 //----------------------------------------------------------------------
 #include <stdio.h>
+#include <arpa/inet.h>
 
 #include "message.h"
 
@@ -11,9 +12,35 @@
    Print a message buffer
 ----------------------------------------------------------------------*/
 void printMsg( msgBuf *m )
-{
-    printf( "{type=%ld, (Purpose=%d, FacID %3d, Capacity %3d, Parts %3d, duration %4d) }\n"
-       , m->mtype    , m->purpose   , m->facID 
-       , m->capacity , m->partsMade , m->duration  ) ;
+{  
+    switch ( ntohl( m->purpose ) )
+    {
+       case PRODUCTION_MSG :
+            printf( "{ PRODUCTION ,FacID=%-3d, Capacity=%-3d, Made=%-4d, duration=%-4dms) }"
+                   , ntohl(m->facID) , ntohl(m->capacity) 
+                   , ntohl(m->partsMade) , ntohl(m->duration) ) ;
+            break ;
+    
+        case COMPLETION_MSG :
+            printf( "{ COMPLETION , FacID=%-3d }" , ntohl(m->facID) ) ;
+            break ;
+
+        case REQUEST_MSG :
+            printf( "{ REQUEST    , OrderSz=%-3d }" , ntohl(m->orderSize) ) ;
+            break ;
+
+        case ORDR_CONFIRM :
+            printf( "{ ORDR_CNFRM , numFacThrds=%-3d }" , ntohl(m->numFac) ) ;
+            break ;
+
+        case PROTOCOL_ERR :
+            printf( "{ PROTOCOL_ERROR }" ) ;
+            break ;
+
+        default :
+            printf( "{ UNDEFINED_MSG }" ) ;
+            break ;
+    }
+
 }
 

@@ -1,33 +1,42 @@
 /************************************************
  * Wrappers for system call functions
  ************************************************/
-#include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <semaphore.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <errno.h>
-#include <string.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/msg.h>
 
 #include "wrappers.h"
 
 /************************************************
  * Unix vs Posix Error Handling Functions
  ************************************************/
-void unix_error( char *msg ) /* unix-style error */
+void unix_error(char *msg) /* unix-style error */
 {
-    fprintf( stderr, "%s: %s\n", msg, strerror( errno )  );
-    exit( -1 );
+    fprintf(stderr, "%s: %s\n", msg, strerror(errno));
+    exit(-1);
 }
 
-void posix_error( int code, char *msg ) /* posix-style error */
+void posix_error(int code, char *msg) /* posix-style error */
 {
-    fprintf( stderr, "%s: %s\n", msg, strerror( code ) );
-    exit( -1 );
+    fprintf(stderr, "%s: %s\n", msg, strerror(code));
+    exit(-1);
+}
+
+//------------------------------------------------------------
+// To be called after a function that sets errno 
+
+void err_sys( const char* x ) 
+{ 
+    fflush( stderr ) ;
+    perror( x ); 
+    exit( -1 ); 
+}
+
+//------------------------------------------------------------
+// To be called after a function that DOES NOT set errno 
+
+void err_quit( const char* x ) 
+{ 
+    fflush( stderr ) ;
+    fputs( x , stderr ) ; 
+    exit( -1 ); 
 }
 
 /************************************************
@@ -152,7 +161,7 @@ int  Shmdt( const void *shmaddr )
  * Wrappers for Posix semaphores
  *******************************/
 
-void Sem_init( sem_t *sem, int pshared, unsigned int value ) 
+int  Sem_init( sem_t *sem, int pshared, unsigned int value ) 
 {
     if ( sem_init(sem, pshared, value) < 0)
         unix_error( "Sem_init error" );
@@ -297,7 +306,6 @@ void Pthread_detach( pthread_t tid )
     if (  ( rc = pthread_detach( tid ) ) != 0  )
         posix_error( rc, "Pthread_detach error");
 }
-
 
 //------------------
 

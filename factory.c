@@ -1,152 +1,170 @@
-/*
-Assignment  : PA 2 - MultiProcessing & IPC
-Authors     : Kyle Mirra mirraka@dukes.jmu.edu      Akwasi Okyere akwasion@dukes.jmu.edu
-Filename    : factory.c
-*/
+//---------------------------------------------------------------------
+// Assignment : PA-03 UDP Single-Threaded Server
+// Date       :
+// Author     : WRITE YOUR  NAME(S)  HERE  ... or risk losing points
+// File Name  : factory.c
+//---------------------------------------------------------------------
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
-#include <fcntl.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 
-#include "shmem.h"
-#include "message.h"
 #include "wrappers.h"
+#include "message.h"
 
+#define MAXSTR     200
+#define IPSTRLEN    50
 
-int main(int argc, char *argv[])
+typedef struct sockaddr SA ;
+
+int minimum( int a , int b)
 {
-    if (argc != 7) {
-        fprintf(stderr, "Usage: %s <factoryID> <capacity> <duration_ms> <shmkey> <msgkey> <factory_log_sem_name>\n", argv[0]);
-        exit(1);
-    }
-
-    int facID    = atoi(argv[1]);
-    int capacity = atoi(argv[2]);
-    int duration = atoi(argv[3]); /* milliseconds */
-
-    key_t shmkey = (key_t) atoi(argv[4]);
-    key_t msgkey = (key_t) atoi(argv[5]);
-    
-    const char *factory_log_sem_name = argv[6];
-
-    /* get shared memory segment (already created by Sales) */
-    int shmid = Shmget(shmkey, SHMEM_SIZE, 0);
-    if (shmid == -1) {
-        perror("Factory: Shmget failed");
-        exit(1);
-    }
-
-    shData *sharedData = (shData *) Shmat(shmid, NULL, 0);
-    if (sharedData == (shData *) -1) {
-        perror("Factory: Shmat failed");
-        exit(1);
-    }
-
-    /* get message queue (already created by Sales) */
-    int msgid = Msgget(msgkey, 0);
-    if (msgid == -1) {
-        perror("Factory: Msgget failed");
-        Shmdt(sharedData);
-        exit(1);
-    }
-
-    int semflag = O_RDWR ;
-
-    /* open factory_log semaphore (used to protect prints AND sharedData updates here) */
-    sem_t *sem_factory_log = Sem_open2(factory_log_sem_name, semflag);
-    if (sem_factory_log == NULL) {
-        perror("Factory: Sem_open2(factory_log) failed");
-        Shmdt(sharedData);
-        exit(1);
-    }
-
-    /* Start message under protected section to avoid interleaving */
-    Sem_wait(sem_factory_log);
-    printf("Factory # %2d: STARTED. My Capacity = %3d, in %4d milliSeconds\n", facID, capacity, duration);
-    fflush(stdout);
-    Sem_post(sem_factory_log);
-
-    int iterations = 0;
-    int totalPartsMade = 0;
-
-    while (sharedData->remain > 0) {
-        int partsToMake;
-
-        /* reserve work and print atomically */
-        Sem_wait(sem_factory_log);
-        if (sharedData->remain <= 0) {
-            Sem_post(sem_factory_log);
-            break;
-        }
-        partsToMake = (sharedData->remain < capacity) ? sharedData->remain : capacity;
-        sharedData->remain -= partsToMake;
-
-        printf("Factory # %2d: Going to make %3d parts in %4d milliSecs\n", 
-               facID, partsToMake, duration);
-        fflush(stdout);
-        Sem_post(sem_factory_log);
-
-        /* simulate manufacturing */
-        Usleep(duration * 1000);
-
-        /* update made count under protection */
-        Sem_wait(sem_factory_log);
-        sharedData->made += partsToMake;
-        Sem_post(sem_factory_log);
-
-        /* send PRODUCTION message to Supervisor */
-        msgBuf msg;
-        msg.mtype = 1;
-        msg.purpose = PRODUCTION_MSG;
-        msg.facID = facID;
-        msg.capacity = capacity;
-        msg.partsMade = partsToMake;
-        msg.duration = duration;
-
-        if (msgsnd(msgid, &msg, MSG_INFO_SIZE, 0) == -1) {
-            Sem_wait(sem_factory_log);
-            fprintf(stderr, "Factory %d: msgsnd(PRODUCTION) failed: %s\n", facID, strerror(errno));
-            fflush(stderr);
-            Sem_post(sem_factory_log);
-        }
-
-        totalPartsMade += partsToMake;
-        iterations++;
-    }
-
-    /* send COMPLETION message */
-    msgBuf cm;
-    cm.mtype = 1;
-    cm.purpose = COMPLETION_MSG;
-    cm.facID = facID;
-    cm.capacity = capacity;
-    cm.partsMade = totalPartsMade;
-    cm.duration = duration;
-
-    if (msgsnd(msgid, &cm, MSG_INFO_SIZE, 0) == -1) {
-        Sem_wait(sem_factory_log);
-        fprintf(stderr, "Factory %d: msgsnd(COMPLETION) failed: %s\n", facID, strerror(errno));
-        fflush(stderr);
-        Sem_post(sem_factory_log);
-    }
-
-    /* final termination print */
-    Sem_wait(sem_factory_log);
-    printf(">>> Factory # %2d: Terminating after making total of %4d parts in %4d iterations\n",
-           facID, totalPartsMade, iterations);
-    fflush(stdout);
-    Sem_post(sem_factory_log);
-
-    /* detach and close */
-    Sem_close(sem_factory_log);
-    Shmdt(sharedData);
-
-    return 0;
+    return ( a <= b ? a : b ) ; 
 }
+
+void subFactory( int factoryID , int myCapacity , int myDuration ) ;
+
+void factLog( char *str )
+{
+    printf( "%s" , str );
+    fflush( stdout ) ;
+}
+
+/*-------------------------------------------------------*/
+
+// Global Variable for Future Thread to Shared
+int   remainsToMake , // Must be protected by a Mutex
+      actuallyMade ;  // Actually manufactured items
+
+int   numActiveFactories = 1 , orderSize ;
+
+int   sd ;      // Server socket descriptor
+struct sockaddr_in  
+             srvrSkt,       /* the address of this server   */
+             clntSkt;       /* remote client's socket       */
+
+//------------------------------------------------------------
+//  Handle Ctrl-C or KILL 
+//------------------------------------------------------------
+void goodbye(int sig) 
+{
+    /* Mission Accomplished */
+    printf( "\n### I (%d) have been nicely asked to TERMINATE. "
+           "goodbye\n\n" , getpid() );  
+
+    // missing code goes here
+
+}
+
+/*-------------------------------------------------------*/
+int main( int argc , char *argv[] )
+{
+    char  *myName = "Replace with your Names" ; 
+    unsigned short port = 50015 ;      /* service port number  */
+    int    N = 1 ;                     /* Num threads serving the client */
+
+    printf("\nThis is the FACTORY server developed by %s\n\n" , myName ) ;
+    char myUserName[30] ;
+    getlogin_r ( myUserName , 30 ) ;
+    time_t  now;
+    time( &now ) ;
+    fprintf( stdout , "Logged in as user '%s' on %s\n\n" , myUserName ,  ctime( &now)  ) ;
+    fflush( stdout ) ;
+
+	switch (argc) 
+	{
+      case 1:
+        break ;     // use default port with a single factory thread
+      
+      case 2:
+        N = atoi( argv[1] ); // get from command line
+        port = 50015;            // use this port by default
+        break;
+
+      case 3:
+        N    = atoi( argv[1] ) ; // get from command line
+        port = atoi( argv[2] ) ; // use port from command line
+        break;
+
+      default:
+        printf( "FACTORY Usage: %s [numThreads] [port]\n" , argv[0] );
+        exit( 1 ) ;
+    }
+
+
+    // missing code goes here
+
+
+    int forever = 1;
+    while ( forever )
+    {
+        printf( "\nFACTORY server waiting for Order Requests\n" ) ; 
+
+        // missing code goes here
+
+        printf("\n\nFACTORY server received: " ) ;
+        printMsg( & msg1 );  puts("");
+
+
+        // missing code goes here
+
+
+        printf("\n\nFACTORY sent this Order Confirmation to the client " );
+        printMsg(  & msg1 );  puts("");
+        
+        subFactory( 1 , 50 , 350 ) ;  // Single factory, ID=1 , capacity=50, duration=350 ms
+    }
+
+
+    return 0 ;
+}
+
+void subFactory( int factoryID , int myCapacity , int myDuration )
+{
+    char    strBuff[ MAXSTR ] ;   // snprint buffer
+    int     partsImade = 0 , myIterations = 0 ;
+    msgBuf  msg;
+
+    while ( 1 )
+    {
+        // See if there are still any parts to manufacture
+        if ( remainsToMake <= 0 )
+            break ;   // Not anymore, exit the loop
+        
+
+
+        // missing code goes here
+
+
+
+        // Send a Production Message to Supervisor
+
+
+        // missing code goes here
+
+
+    }
+
+    // Send a Completion Message to Supervisor
+
+
+    // missing code goes here
+
+
+
+    snprintf( strBuff , MAXSTR , ">>> Factory # %-3d: Terminating after making total of %-5d parts in %-4d iterations\n" 
+          , factoryID, partsImade, myIterations);
+    factLog( strBuff ) ;
+    
+}
+
