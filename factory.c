@@ -59,12 +59,10 @@ struct sockaddr_in
 //------------------------------------------------------------
 void goodbye(int sig) 
 {
-    /* Mission Accomplished */
-    printf( "\n### I (%d) have been nicely asked to TERMINATE. "
-           "goodbye\n\n" , getpid() );  
-
+    
     // missing code goes here
     fflush(stdout);
+    printf("\nI have been ");
     switch (sig) {
         case SIGTERM:
             printf("nicely asked to TERMINATE by SIGTERM (%d).\n", sig);
@@ -75,7 +73,7 @@ void goodbye(int sig)
         default:
             printf("unexpectedly SIGNALed by (%d)\n", sig);
     }
-
+    exit(0);
 }
 
 /*-------------------------------------------------------*/
@@ -87,7 +85,7 @@ int main( int argc , char *argv[] )
     char  *myName = "Kyle Mirra and Akwasi Okyere" ; 
     unsigned short port = 50015 ;      /* service port number  */
     int    N = 1 ;                     /* Num threads serving the client */
-    unsigned int    addrLen;          /* from-address length          */
+    socklen_t     addrLen;          /* from-address length          */
 
     printf("\nThis is the FACTORY server developed by %s\n\n" , myName ) ;
     char myUserName[30] ;
@@ -158,14 +156,18 @@ int main( int argc , char *argv[] )
         printf("\n\nFACTORY server received: " ) ;
         printMsg( & rcvMsg );  puts("");
 
+        char clientIP[IPSTRLEN];
+        inet_ntop(AF_INET, (void *) &clntSkt.sin_addr.s_addr, clientIP, IPSTRLEN);
+        printf("        From IP %s Port %d", clientIP, ntohs(clntSkt.sin_port));
+
         // Set order size and remainsToMake
-        orderSize = rcvMsg.orderSize;
+        orderSize = ntohl(rcvMsg.orderSize);
         remainsToMake += orderSize;
         
         // Create the confirmation message
         msgBuf cnfMsg;
-        cnfMsg.numFac = 1;
-        cnfMsg.purpose = ORDR_CONFIRM;
+        cnfMsg.numFac = htonl(1);
+        cnfMsg.purpose = htonl(ORDR_CONFIRM);
 
 
         // Send the confirmation message
@@ -203,13 +205,14 @@ void subFactory( int factoryID , int myCapacity , int myDuration )
         partsImade += partsToMake;
         myIterations++;
 
+        printf("Factory #%3d: Going to make %5d parts in %4d mSec\n", factoryID, partsToMake, myDuration);
 
         // Send a Production Message to Supervisor
-        msg.facID = 1;
-        msg.capacity = myCapacity;
-        msg.partsMade = partsToMake;
-        msg.duration = myDuration;
-        msg.purpose = PRODUCTION_MSG;
+        msg.facID = htonl(factoryID);
+        msg.capacity = htonl(myCapacity);
+        msg.partsMade = htonl(partsToMake);
+        msg.duration = htonl(myDuration);
+        msg.purpose = htonl(PRODUCTION_MSG);
 
         if (sendto(sd, (void *) &msg, sizeof(msg), 0, (SA *) &clntSkt, sizeof(clntSkt)) < 0) {
             err_sys("Error sending production message");
@@ -218,8 +221,8 @@ void subFactory( int factoryID , int myCapacity , int myDuration )
 
     // Send a Completion Message to Supervisor
     msgBuf cmpMsg;
-    cmpMsg.facID = 1;
-    cmpMsg.purpose = COMPLETION_MSG;
+    cmpMsg.facID = htonl(1);
+    cmpMsg.purpose = htonl(COMPLETION_MSG);
 
     if (sendto(sd, (void *) &cmpMsg, sizeof(cmpMsg), 0, (SA *) &clntSkt, sizeof(clntSkt)) < 0) {
         err_sys("Error sending completion message");

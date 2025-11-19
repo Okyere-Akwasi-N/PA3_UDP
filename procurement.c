@@ -34,7 +34,7 @@ int main( int argc , char *argv[] )
             iters[ MAXFACTORIES+1 ] = {0} ,  // num Iterations completed by each Factory
             partsMade[ MAXFACTORIES+1 ] = {0} , totalItems = 0;
 
-    unsigned int addrLen;
+    socklen_t addrLen;
 
     char  *myName = "Kyle Mirra and Akwasi Okyere" ; 
     printf("\nPROCUREMENT: Started. Developed by %s\n\n" , myName );    
@@ -69,6 +69,7 @@ int main( int argc , char *argv[] )
     struct sockaddr_in srvrSkt;
     memset((void *) &srvrSkt, 0, sizeof(srvrSkt));
     srvrSkt.sin_family = AF_INET;
+    srvrSkt.sin_port = htons(port);
     if (inet_pton(AF_INET, serverIP, (void *) &srvrSkt.sin_addr.s_addr) != 1) {
         err_sys("Invalid IP Address");
     }
@@ -76,13 +77,14 @@ int main( int argc , char *argv[] )
     // Send the initial request to the Factory Server
     msgBuf  msg1;
     // missing code goes here
-    msg1.orderSize = orderSize;
-    msg1.purpose = REQUEST_MSG;
+    msg1.orderSize = htonl(orderSize);
+    msg1.purpose = htonl(REQUEST_MSG);
 
     if (sendto(sd, (void *) &msg1, sizeof(msg1), 0, (SA *) &srvrSkt, sizeof(srvrSkt)) < 0) {
         err_sys("Error sending request message");
     }
 
+    printf("Attempting factory server at %s : %hu\n", serverIP, port);
     printf("\nPROCUREMENT Sent this message to the FACTORY server: "  );
     printMsg( & msg1 );  puts("");
 
@@ -102,7 +104,7 @@ int main( int argc , char *argv[] )
     printMsg( & msg2 );  puts("\n");
 
     // missing code goes here
-    numFactories = msg2.numFac;
+    numFactories = ntohl(msg2.numFac);
     activeFactories = numFactories;
 
     // Monitor all Active Factory Lines & Collect Production Reports
@@ -115,13 +117,17 @@ int main( int argc , char *argv[] )
         }
 
        // Inspect the incoming message
-        if (updtMsg.purpose == PRODUCTION_MSG) {
-            iters[updtMsg.facID]++;
-            partsMade[updtMsg.facID] += updtMsg.partsMade;
-            totalItems += updtMsg.partsMade;
-            printf("PROCUREMENT: Factory #%3d produced %5d parts in %5d milliSecs\n", updtMsg.facID, updtMsg.partsMade, updtMsg.duration);
+        if (ntohl(updtMsg.purpose) == PRODUCTION_MSG) {
+            int facID = ntohl(updtMsg.facID);
+            int msgPartsMade = ntohl(updtMsg.partsMade);
+
+            iters[facID]++;
+            partsMade[facID] += msgPartsMade;
+            printf("PROCUREMENT: Factory #%3d produced %5d parts in %5d milliSecs\n", facID, msgPartsMade, ntohl(updtMsg.duration));
+
         } else {
             activeFactories--;
+            printf("PROCUREMENT: Factory #%3d       COMPLETED its task\n");
         }
     } 
 
@@ -131,13 +137,14 @@ int main( int argc , char *argv[] )
     printf("\n\n****** PROCUREMENT Summary Report ******\n");
     for (int i = 1; i <= numFactories; i++) {
         printf("Factory #%3d made a total of %5d parts in %3d iterations\n", i, partsMade[i], iters[i]);
+        totalItems += partsMade[i];
     }
 
     printf("==============================\n") ;
 
 
     // missing code goes here
-    printf("Grandd total parts made = %5d vs order size of %5d\n", totalItems, orderSize);
+    printf("Grand total parts made = %5d vs order size of %5d\n", totalItems, orderSize);
 
     printf( "\n>>> PROCUREMENT Terminated\n");
 
