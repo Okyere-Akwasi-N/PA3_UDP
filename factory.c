@@ -18,6 +18,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <pthread.h>
 
 #include "wrappers.h"
 #include "message.h"
@@ -49,6 +50,8 @@ int   remainsToMake , // Must be protected by a Mutex
 
 int   numActiveFactories = 1 , orderSize ;
 
+pthread_mutex_t remains_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 int   sd ;      // Server socket descriptor
 struct sockaddr_in  
              srvrSkt,       /* the address of this server   */
@@ -59,21 +62,26 @@ struct sockaddr_in
 //------------------------------------------------------------
 void goodbye(int sig) 
 {
-    
     // missing code goes here
     fflush(stdout);
-    printf("\nI have been ");
-    switch (sig) {
+           
+    msgBuf byeMsg;
+    byeMsg.purpose = htonl(PROTOCOL_ERR);
+    switch( sig ) {
         case SIGTERM:
-            printf("nicely asked to TERMINATE by SIGTERM (%d).\n", sig);
-            break;
+            printf("nicely asked to TERMINATE by SIGTERM ( %d ).\n" , sig ) ;
+            break ;
         case SIGINT:
-            printf("INTERRUPTED by SIGINT (%d)\n", sig);
-            break;
-        default:
-            printf("unexpectedly SIGNALed by (%d)\n", sig);
+            printf( "\n### I (%d) have been nicely asked to TERMINATE. "
+           "goodbye\n\n" , getpid() ); 
+            break ;
     }
-    exit(0);
+
+    sendto(sd, &byeMsg, sizeof(byeMsg), 0, (SA *) &clntSkt, sizeof(clntSkt));
+    pthread_mutex_destroy(&remains_mutex);
+    close( sd ) ;
+    exit( 0 ) ;
+
 }
 
 /*-------------------------------------------------------*/
@@ -162,8 +170,11 @@ int main( int argc , char *argv[] )
 
         // Set order size and remainsToMake
         orderSize = ntohl(rcvMsg.orderSize);
+
+        pthread_mutex_lock(&remains_mutex);
         remainsToMake += orderSize;
-        
+        pthread_mutex_unlock(&remains_mutex);
+
         // Create the confirmation message
         msgBuf cnfMsg;
         cnfMsg.numFac = htonl(1);
@@ -192,14 +203,20 @@ void subFactory( int factoryID , int myCapacity , int myDuration )
     {
         
         // See if there are still any parts to manufacture
-        if ( remainsToMake <= 0 )
+
+        pthread_mutex_lock(&remains_mutex);
+        if ( remainsToMake <= 0 ) {
+            pthread_mutex_unlock(&remains_mutex);
             break ;   // Not anymore, exit the loop
         
+        }
 
         // missing code goes here
         // Calculate how many parts to make and sleep for the duration
         int partsToMake = minimum(remainsToMake, myCapacity);
         remainsToMake -= partsToMake;
+        pthread_mutex_unlock(&remains_mutex);
+
         Usleep(myDuration * 1000);
 
         partsImade += partsToMake;
@@ -233,4 +250,6 @@ void subFactory( int factoryID , int myCapacity , int myDuration )
     factLog( strBuff ) ;
     
 }
-
+// lab computers
+// L24820 L24821
+// L24814

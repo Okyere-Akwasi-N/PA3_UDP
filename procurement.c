@@ -116,18 +116,28 @@ int main( int argc , char *argv[] )
             err_sys("Error receiving update message");
         }
 
+        int facID = ntohl(updtMsg.facID);
+        int msgPartsMade = ntohl(updtMsg.partsMade);
+        unsigned duration = ntohl(updtMsg.duration);
+        msgPurpose_t purpose = ntohl(updtMsg.purpose);
+
        // Inspect the incoming message
-        if (ntohl(updtMsg.purpose) == PRODUCTION_MSG) {
-            int facID = ntohl(updtMsg.facID);
-            int msgPartsMade = ntohl(updtMsg.partsMade);
-
-            iters[facID]++;
-            partsMade[facID] += msgPartsMade;
-            printf("PROCUREMENT: Factory #%3d produced %5d parts in %5d milliSecs\n", facID, msgPartsMade, ntohl(updtMsg.duration));
-
+        if (purpose == PRODUCTION_MSG) {
+        iters[facID]++;
+        partsMade[facID] += msgPartsMade;
+        printf("PROCUREMENT: Factory #%3d produced %5d parts in %5d milliSecs\n", facID, msgPartsMade, duration);
+    } 
+        else if (purpose == COMPLETION_MSG) {
+            activeFactories--;
+            printf("PROCUREMENT: Factory #%d         COMPLETED its task\n", facID);
+        }
+        else if (purpose == PROTOCOL_ERR){
+            printf("PROCUREMENT: Received { PROTOCOL_ERROR }\n");
+            close(sd);
+            exit(1);
         } else {
             activeFactories--;
-            printf("PROCUREMENT: Factory #%3d       COMPLETED its task\n");
+            printf("PROCUREMENT: Factory #%3d       COMPLETED its task\n", facID);
         }
     } 
 
