@@ -62,7 +62,6 @@ struct sockaddr_in
 //------------------------------------------------------------
 void goodbye(int sig) 
 {
-    // missing code goes here
     fflush(stdout);
            
     msgBuf byeMsg;
@@ -77,11 +76,12 @@ void goodbye(int sig)
             break ;
     }
 
-    sendto(sd, &byeMsg, sizeof(byeMsg), 0, (SA *) &clntSkt, sizeof(clntSkt));
+    if (sendto(sd, &byeMsg, sizeof(byeMsg), 0, (SA *) &clntSkt, sizeof(clntSkt)) < 0) {
+        err_sys("Error sending error message");
+    }
     pthread_mutex_destroy(&remains_mutex);
     close( sd ) ;
     exit( 0 ) ;
-
 }
 
 /*-------------------------------------------------------*/
@@ -123,8 +123,6 @@ int main( int argc , char *argv[] )
         exit( 1 ) ;
     }
 
-
-    // missing code goes here
     // Create the socket
     sd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sd < 0) {
@@ -155,7 +153,6 @@ int main( int argc , char *argv[] )
         addrLen = sizeof(clntSkt);
         printf( "\nFACTORY server waiting for Order Requests\n" ) ; 
 
-        // missing code goes here
         // Wait to receive request message
         msgBuf rcvMsg;
         if (recvfrom(sd, (void *) &rcvMsg, sizeof(rcvMsg), 0, (SA *) &clntSkt, &addrLen) < 0) {
@@ -180,7 +177,6 @@ int main( int argc , char *argv[] )
         cnfMsg.numFac = htonl(1);
         cnfMsg.purpose = htonl(ORDR_CONFIRM);
 
-
         // Send the confirmation message
         if (sendto(sd, (void *)&cnfMsg, sizeof(cnfMsg), 0, (SA * ) &clntSkt, sizeof(clntSkt)) < 0) {
             err_sys("Error sending the order confirmation message");
@@ -199,26 +195,22 @@ void subFactory( int factoryID , int myCapacity , int myDuration )
     int     partsImade = 0 , myIterations = 0 ;
     msgBuf  msg;
 
-    while (remainsToMake > 0)
+    
+    while (1)
     {
-        
         // See if there are still any parts to manufacture
-
         pthread_mutex_lock(&remains_mutex);
         if ( remainsToMake <= 0 ) {
             pthread_mutex_unlock(&remains_mutex);
             break ;   // Not anymore, exit the loop
-        
         }
 
-        // missing code goes here
         // Calculate how many parts to make and sleep for the duration
         int partsToMake = minimum(remainsToMake, myCapacity);
         remainsToMake -= partsToMake;
         pthread_mutex_unlock(&remains_mutex);
 
         Usleep(myDuration * 1000);
-
         partsImade += partsToMake;
         myIterations++;
 
@@ -248,7 +240,6 @@ void subFactory( int factoryID , int myCapacity , int myDuration )
     snprintf( strBuff , MAXSTR , ">>> Factory # %-3d: Terminating after making total of %-5d parts in %-4d iterations\n" 
           , factoryID, partsImade, myIterations);
     factLog( strBuff ) ;
-    
 }
 // lab computers
 // L24820 L24821

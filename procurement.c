@@ -58,14 +58,12 @@ int main( int argc , char *argv[] )
  
 
     /* Set up local and remote sockets */
-    // missing code goes here
     int sd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sd < 0) {
         err_sys("Error creating socket");
     }
 
     // Prepare the server's socket address structure
-    // missing code goes here
     struct sockaddr_in srvrSkt;
     memset((void *) &srvrSkt, 0, sizeof(srvrSkt));
     srvrSkt.sin_family = AF_INET;
@@ -76,7 +74,6 @@ int main( int argc , char *argv[] )
 
     // Send the initial request to the Factory Server
     msgBuf  msg1;
-    // missing code goes here
     msg1.orderSize = htonl(orderSize);
     msg1.purpose = htonl(REQUEST_MSG);
 
@@ -88,29 +85,25 @@ int main( int argc , char *argv[] )
     printf("\nPROCUREMENT Sent this message to the FACTORY server: "  );
     printMsg( & msg1 );  puts("");
 
-
     /* Now, wait for order confirmation from the Factory server */
     msgBuf  msg2;
     printf ("\nPROCUREMENT is now waiting for order confirmation ...\n" );
 
     addrLen = sizeof(srvrSkt);
-    // missing code goes here
     if (recvfrom(sd, (void *) &msg2, sizeof(msg2), 0, (SA *) &srvrSkt, &addrLen) < 0) {
         err_sys("Error receiving order confirmation message");
     }
 
-
     printf("PROCUREMENT received this from the FACTORY server: "  );
     printMsg( & msg2 );  puts("\n");
 
-    // missing code goes here
     numFactories = ntohl(msg2.numFac);
     activeFactories = numFactories;
 
     // Monitor all Active Factory Lines & Collect Production Reports
     while ( activeFactories > 0 ) // wait for messages from sub-factories
     {
-        // missing code goes here
+        // Receive the update message
         msgBuf updtMsg;
         if (recvfrom(sd, (void *) &updtMsg, sizeof(updtMsg), 0, (SA *) &srvrSkt, &addrLen) < 0) {
             err_sys("Error receiving update message");
@@ -142,7 +135,6 @@ int main( int argc , char *argv[] )
     } 
 
     // Print the summary report
-    // missing code goes here
     totalItems  = 0 ;
     printf("\n\n****** PROCUREMENT Summary Report ******\n");
     for (int i = 1; i <= numFactories; i++) {
@@ -152,8 +144,6 @@ int main( int argc , char *argv[] )
 
     printf("==============================\n") ;
 
-
-    // missing code goes here
     printf("Grand total parts made = %5d vs order size of %5d\n", totalItems, orderSize);
 
     printf( "\n>>> PROCUREMENT Terminated\n");
