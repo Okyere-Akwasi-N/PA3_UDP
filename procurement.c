@@ -119,18 +119,20 @@ int main( int argc , char *argv[] )
         iters[facID]++;
         partsMade[facID] += msgPartsMade;
         printf("PROCUREMENT: Factory #%3d produced %5d parts in %5d milliSecs\n", facID, msgPartsMade, duration);
-    } 
+        } 
         else if (purpose == COMPLETION_MSG) {
             activeFactories--;
-            printf("PROCUREMENT: Factory #%d         COMPLETED its task\n", facID);
+            printf("PROCUREMENT:rn were not  Factory #%d         COMPLETED its task\n", facID);
         }
         else if (purpose == PROTOCOL_ERR){
-            printf("PROCUREMENT: Received { PROTOCOL_ERROR }\n");
+            printf("PROCUREMENT: Received invalid msg ");
+            printMsg(&updtMsg); puts("");
             close(sd);
             exit(1);
         } else {
-            activeFactories--;
-            printf("PROCUREMENT: Factory #%3d       COMPLETED its task\n", facID);
+            printf("PROCUREMENT: Received an invalid message\n");
+            close(sd);
+            exit(1);
         }
     } 
 
